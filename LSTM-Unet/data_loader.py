@@ -6,7 +6,7 @@ from collections import defaultdict
 
 class DataGenerator(Sequence):
     def __init__(self, image_dir, mask_dir, batch_size, time_steps, img_size=(256,256), shuffle=True,
-                 normalize_images=True, normalize_masks=True):
+                 normalize_images=True, normalize_masks=True, infinite=True):
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         self.batch_size = batch_size
@@ -15,6 +15,7 @@ class DataGenerator(Sequence):
         self.shuffle = shuffle
         self.normalize_images = normalize_images
         self.normalize_masks = normalize_masks
+        self.infinite = infinite
 
         # Store all images metadata grouped by (plant, patch) with day mapping
         self.grouped = self.group_images_by_plant_patch()
@@ -51,26 +52,27 @@ class DataGenerator(Sequence):
         for key, day_dict in self.grouped.items():
             plant, patch = key
 
-            # We consider days from 1 to max day (e.g. 15)
             max_day = max(day_dict.keys())
-            # or fixed max day 15 for consistency
-            max_day = max(max_day, 15)
+            max_day = max(max_day, self.time_steps)  # Ensure at least `time_steps`
 
-            # We'll create sequences starting from day 1 to day (max_day - time_steps + 1)
             for start_day in range(1, max_day - self.time_steps + 2):
                 seq = []
                 for d in range(start_day, start_day + self.time_steps):
                     if d in day_dict:
                         seq.append(day_dict[d])
                     else:
-                        seq.append(None)  # missing day = None (will be padded)
+                        seq.append(None)  # Missing day = None (will be padded)
                 sequences.append(seq)
         return sequences
 
     def __len__(self):
-        return len(self.samples) // self.batch_size
+        # If infinite, we pretend it's "infinite" so Keras won't call len().
+        return len(self.samples) // self.batch_size if not self.infinite else 1000000  # large placeholder
 
     def __getitem__(self, index):
+        if self.infinite:
+            index = index % (len(self.samples) // self.batch_size)
+
         batch_seqs = self.samples[index * self.batch_size:(index + 1) * self.batch_size]
         X_batch = []
         y_batch = []
@@ -79,12 +81,10 @@ class DataGenerator(Sequence):
             X_seq = []
             for meta in seq:
                 if meta is None:
-                    # Missing day: add black image
                     X_seq.append(np.zeros((*self.img_size, 3), dtype=np.float32))
                 else:
                     X_seq.append(self.load_image(os.path.join(self.image_dir, meta['filename'])))
     
-            # For mask, pad with black if last day missing
             last_meta = seq[-1]
             if last_meta is None:
                 y_mask = np.zeros((*self.img_size, 1), dtype=np.float32)
@@ -103,12 +103,14 @@ class DataGenerator(Sequence):
     
     def load_image(self, path):
         img = cv2.imread(path, cv2.IMREAD_COLOR)
+        img = cv2.resize(img, self.img_size)
         if self.normalize_images:
             img = img / 255.0
         return img.astype(np.float32)
     
     def load_mask(self, path):
         mask = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        mask = cv2.resize(mask, self.img_size)
         if self.normalize_masks:
             mask = mask / 255.0
         return np.expand_dims(mask, axis=-1).astype(np.float32)
