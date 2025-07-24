@@ -48,21 +48,22 @@ class DataGenerator(Sequence):
 
     def build_sequences_with_padding(self):
         sequences = []
-
+    
         for key, day_dict in self.grouped.items():
             plant, patch = key
-
-            max_day = max(day_dict.keys())
-            max_day = max(max_day, self.time_steps)  # Ensure at least `time_steps`
-
+    
+            available_days = sorted(day_dict.keys())
+            max_day = max(available_days)
+    
             for start_day in range(1, max_day - self.time_steps + 2):
                 seq = []
                 for d in range(start_day, start_day + self.time_steps):
                     if d in day_dict:
                         seq.append(day_dict[d])
                     else:
-                        seq.append(None)  # Missing day = None (will be padded)
+                        seq.append(None)
                 sequences.append(seq)
+    
         return sequences
 
     def __len__(self):
@@ -72,30 +73,37 @@ class DataGenerator(Sequence):
     def __getitem__(self, index):
         if self.infinite:
             index = index % (len(self.samples) // self.batch_size)
-
+    
         batch_seqs = self.samples[index * self.batch_size:(index + 1) * self.batch_size]
         X_batch = []
         y_batch = []
     
-        for seq in batch_seqs:
+        for i, seq in enumerate(batch_seqs):
+    
             X_seq = []
+            y_seq = []
+    
             for meta in seq:
                 if meta is None:
                     X_seq.append(np.zeros((*self.img_size, 3), dtype=np.float32))
+                    y_seq.append(np.zeros((*self.img_size, 1), dtype=np.float32))
                 else:
                     X_seq.append(self.load_image(os.path.join(self.image_dir, meta['filename'])))
+                    mask_filename = self.change_extension(meta['filename'], '.tif')
+                    mask_path = os.path.join(self.mask_dir, mask_filename)
     
-            last_meta = seq[-1]
-            if last_meta is None:
-                y_mask = np.zeros((*self.img_size, 1), dtype=np.float32)
-            else:
-                mask_filename = self.change_extension(last_meta['filename'], '.tif')
-                y_mask = self.load_mask(os.path.join(self.mask_dir, mask_filename))
+                    if os.path.exists(mask_path):
+                        y_mask = self.load_mask(mask_path)
+                    else:
+                        y_mask = np.zeros((*self.img_size, 1), dtype=np.float32)
+    
+                    y_seq.append(y_mask)
     
             X_batch.append(X_seq)
-            y_batch.append(y_mask)
+            y_batch.append(y_seq)
     
         return np.array(X_batch), np.array(y_batch)
+
 
     def change_extension(self, filename, new_ext):
         base = os.path.splitext(filename)[0]
