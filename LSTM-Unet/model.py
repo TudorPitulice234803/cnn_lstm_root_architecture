@@ -47,6 +47,6 @@ def lstm_unet(input_shape=(15, 256, 256, 3)):
     c9 = BatchNormalization()(c9)
 
     # Output layer
-    outputs = Conv3D(1, (1, 1, 1), activation='sigmoid', padding='same')(c9)
+    outputs = TimeDistributed(Conv2D(1, (1, 1), activation='sigmoid'))(c9)
 
     return Model(inputs, outputs)
