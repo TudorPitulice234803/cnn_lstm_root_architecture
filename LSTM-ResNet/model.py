@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.layers import (
     Input, Conv2D, BatchNormalization, ReLU, Add, Conv2DTranspose,
-    TimeDistributed, LSTM, Flatten, Dense, Reshape
+    TimeDistributed, LSTM, Dense, ConvLSTM2D
 )
 from tensorflow.keras.models import Model
 
@@ -49,16 +49,10 @@ def lstm_resnet(img_height, img_width, img_channels, time_steps):
     x = Add()([shortcut, x])
     x = TimeDistributed(ReLU())(x)
 
-    ### Flatten spatial for LSTM ###
-    x = TimeDistributed(Flatten())(x)  # shape: (batch, time, features)
-
-    ### LSTM Across Time ###
-    x = LSTM(256, return_sequences=True)(x)
-
-    ### Project back to spatial format ###
-    spatial_dim = (img_height // 8, img_width // 8, 256)
-    x = TimeDistributed(Dense(tf.math.reduce_prod(spatial_dim)))(x)
-    x = TimeDistributed(Reshape(spatial_dim))(x)
+    ### Bottleneck ###
+    x = ConvLSTM2D(filters=128, kernel_size=(3, 3), padding='same',
+                  return_sequences=True, activation='tanh')(x)
+    x = BatchNormalization()(x)
 
     ### TimeDistributed Decoder (Upsampling without residuals) ###
     x = TimeDistributed(Conv2DTranspose(128, (3, 3), strides=2, padding='same'))(x)
