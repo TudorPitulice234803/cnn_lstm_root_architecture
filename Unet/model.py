@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.keras import layers, models
-from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Dropout, Conv2DTranspose, concatenate
 import keras.backend as K
