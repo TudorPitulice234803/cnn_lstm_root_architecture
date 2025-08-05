@@ -4,142 +4,106 @@ from tensorflow.keras.layers import *
 
 def lstm_vit():
     """
-    Improved LSTM-ViT with fixes for major bottlenecks
+    LSTM-ViT with backbone matched to simple ViT for fair comparison
     """
     ### HYPER PARAMS ###
     seq_len = 15
     img_height = 256
     img_width = 256
     img_channels = 3
-    embedding_dim = 256  # Increased for better representation
-    num_heads = 4        # More heads for better attention
-    ff_dim = 512         # Increased FF dimension
-    num_transformer_blocks = 4
-    lstm_units = 128      # Increased LSTM capacity
+    embedding_dim = 256       # Same as simple ViT
+    num_heads = 4             # Same as simple ViT
+    ff_dim = 512              # Same as simple ViT
+    num_transformer_blocks = 4 # Same as simple ViT
+    lstm_units = 64           # LSTM specific
     
     inputs = Input(shape=(seq_len, img_height, img_width, img_channels))
     
     def frame_encoder():
         """
-        Improved frame encoder with better downsampling and skip connections
+        Frame encoder that exactly matches the simple ViT backbone
         """
         frame_input = Input(shape=(img_height, img_width, img_channels))
         
-        # More gradual downsampling with batch normalization
-        x = Conv2D(32, 7, strides=2, padding='same', use_bias=False)(frame_input)  # 128x128
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        skip1 = x  # Store for potential skip connection
+        # EXACT same CNN layers as simple ViT
+        x = Conv2D(64, 7, strides=2, padding='same', activation='relu')(frame_input) # 128x128
+        x = Conv2D(128, 3, strides=2, padding='same', activation='relu')(x) # 64x64
+        x = Conv2D(embedding_dim, 3, strides=2, padding='same', activation='relu')(x) # 32x32
         
-        x = Conv2D(64, 3, strides=2, padding='same', use_bias=False)(x)  # 64x64
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        skip2 = x
-        
-        x = Conv2D(embedding_dim, 3, strides=2, padding='same', use_bias=False)(x)  # 32x32
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        
-        # Additional conv layer instead of MaxPooling to preserve information
-        x = Conv2D(embedding_dim, 3, strides=2, padding='same', use_bias=False)(x)  # 16x16
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        
-        # Flatten spatial dims to sequence
-        spatial_size = 16 * 16  # 256 patches
+        # Flatten spatial dims to create sequences for the transformer
+        spatial_size = 32 * 32  # 1024 sequence length
         x = Reshape((spatial_size, embedding_dim))(x)
         
-        # Learnable positional embeddings (better than fixed)
-        pos_embed_layer = Embedding(
-            input_dim=spatial_size, 
-            output_dim=embedding_dim,
-            embeddings_initializer='glorot_uniform'
-        )
+        # Positional embeddings - EXACT same as simple ViT
         positions = tf.range(start=0, limit=spatial_size, delta=1)
-        pos_embed = pos_embed_layer(positions)
-        x = x + pos_embed
+        position_embeddings = Embedding(
+            input_dim=spatial_size,
+            output_dim=embedding_dim
+        )(positions)
+        x += position_embeddings
         
-        # Transformer blocks with improved residual connections
-        for i in range(num_transformer_blocks):
-            # Pre-normalization (better than post-normalization)
+        # Transformer blocks - EXACT same as simple ViT
+        for _ in range(num_transformer_blocks):
+            # Multi head Self Attention
             x1 = LayerNormalization(epsilon=1e-6)(x)
-            attn = MultiHeadAttention(
-                num_heads=num_heads, 
-                key_dim=embedding_dim // num_heads, 
-                dropout=0.1,
-                kernel_initializer='glorot_uniform'
+            attention_output = MultiHeadAttention(
+                num_heads=num_heads,
+                key_dim=embedding_dim // num_heads,
+                dropout=0.1
             )(x1, x1)
-            x2 = Add()([x, attn])
+            x2 = Add()([x, attention_output])
             
+            # Feed forward Network
             x3 = LayerNormalization(epsilon=1e-6)(x2)
-            ff = Dense(ff_dim, activation='gelu', kernel_initializer='glorot_uniform')(x3)
-            ff = Dense(embedding_dim, kernel_initializer='glorot_uniform')(ff)
-            ff = Dropout(0.1)(ff)
-            x = Add()([x2, ff])
+            ff_output = Dense(ff_dim, activation='gelu')(x3)
+            ff_output = Dense(embedding_dim)(ff_output)
+            ff_output = Dropout(0.1)(ff_output)
+            x = Add()([x2, ff_output])
         
-        # Final normalization
+        # Final Normalization
         x = LayerNormalization(epsilon=1e-6)(x)
         
-        # Reshape back to spatial format
-        x = Reshape((16, 16, embedding_dim))(x)
+        # Reshape back to spatial dims (32x32)
+        x = Reshape((32, 32, embedding_dim))(x)
         
-        return Model(inputs=frame_input, outputs=x, name='frame_encoder')
+        return Model(inputs=frame_input, outputs=x, name='vit_encoder')
     
-    # Create the encoder
+    # Create the encoder (same as simple ViT)
     vit_encoder = frame_encoder()
     
     # Apply encoder to each frame in the sequence
     encoded_seq = TimeDistributed(vit_encoder, name='temporal_encoding')(inputs)
+    # Shape: (batch_size, seq_len, 32, 32, embedding_dim)
     
-    # MAJOR FIX: Use global average pooling instead of flattening everything
-    # This reduces the sequence length dramatically
-    x = TimeDistributed(GlobalAveragePooling2D(), name='spatial_pooling')(encoded_seq)
-    # Now x has shape (batch_size, seq_len, embedding_dim) instead of (batch_size, seq_len, 16*16*embedding_dim)
+    # Flatten spatial dimensions for LSTM processing
+    B = tf.shape(encoded_seq)[0]
+    T = seq_len
+    H, W, C = 32, 32, embedding_dim
+    x = Reshape((T, H * W * C))(encoded_seq)  # (batch_size, seq_len, 32*32*256)
     
-    # Temporal modeling with improved LSTM
+    # Temporal modeling with Bidirectional LSTM
     x = Bidirectional(
-        LSTM(lstm_units, return_sequences=True, dropout=0.2, recurrent_dropout=0.2),
+        LSTM(lstm_units, return_sequences=True, dropout=0.2),
         name='temporal_lstm'
     )(x)
-    # x shape: (batch_size, seq_len, 2*lstm_units)
+    # Shape: (batch_size, seq_len, 2*lstm_units)
     
-    # Project back to spatial features
-    lstm_output_dim = 2 * lstm_units  # Bidirectional doubles the output
+    # Project LSTM output back to spatial feature size
     x = TimeDistributed(
-        Dense(16 * 16 * embedding_dim, activation='relu'),
+        Dense(H * W * C, activation='relu'),
         name='spatial_projection'
     )(x)
-    x = TimeDistributed(Reshape((16, 16, embedding_dim)), name='spatial_reshape')(x)
     
-    # Improved decoder with skip connections and batch norm
-    x = TimeDistributed(Conv2DTranspose(
-        64, 4, strides=2, padding='same', use_bias=False
-    ), name='upsample_1')(x)  # 32x32
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(Activation('relu'))(x)
+    # Reshape back to spatial dimensions
+    x = Reshape((T, H, W, C))(x)
+    # Shape: (batch_size, seq_len, 32, 32, embedding_dim)
     
-    x = TimeDistributed(Conv2DTranspose(
-        32, 4, strides=2, padding='same', use_bias=False
-    ), name='upsample_2')(x)  # 64x64
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(Activation('relu'))(x)
+    # Decoder - EXACT same as simple ViT
+    x = TimeDistributed(Conv2DTranspose(128, 3, strides=2, padding='same', activation='relu'))(x)  # 64x64
+    x = TimeDistributed(Conv2DTranspose(64, 3, strides=2, padding='same', activation='relu'))(x)   # 128x128
+    x = TimeDistributed(Conv2DTranspose(32, 3, strides=2, padding='same', activation='relu'))(x)   # 256x256
     
-    x = TimeDistributed(Conv2DTranspose(
-        16, 4, strides=2, padding='same', use_bias=False
-    ), name='upsample_3')(x)  # 128x128
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(Activation('relu'))(x)
-    
-    x = TimeDistributed(Conv2DTranspose(
-        8, 4, strides=2, padding='same', use_bias=False
-    ), name='upsample_4')(x)  # 256x256
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(Activation('relu'))(x)
-    
-    # Final segmentation layer
-    outputs = TimeDistributed(
-        Conv2D(1, 1, activation='sigmoid', name='segmentation_head'),
-        name='final_segmentation'
-    )(x)
+    # Final segmentation layer - same as simple ViT
+    outputs = TimeDistributed(Conv2D(1, 1, activation='sigmoid'))(x)
     
     return Model(inputs=inputs, outputs=outputs, name='LSTM_ViT')
