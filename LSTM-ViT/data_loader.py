@@ -5,9 +5,9 @@ import albumentations as A
 
 # Define augmentation pipeline
 augment = A.Compose([
-    A.HorizontalFlip(p=0.7),
-    A.VerticalFlip(p=0.7),
-    A.Rotate(limit=45, p=0.7),
+    A.HorizontalFlip(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.Rotate(limit=15, p=0.5),
 ], additional_targets={'mask': 'mask'})
 
 def build_patch_index(image_dir):
@@ -192,7 +192,10 @@ def data_generator_sequences(image_dir, mask_dir, batch_size, sequence_length=15
                 for patch_file in sequence:
                     try:
                         # Load image
-                        img_patch = img_to_array(load_img(os.path.join(image_dir, patch_file)))
+                        img_patch = img_to_array(load_img(
+                            os.path.join(image_dir, patch_file),
+                            color_mode='grayscale'
+                        ))
                         
                         # Load mask
                         mask_file = patch_file.replace('.png', '.tif')
@@ -242,8 +245,8 @@ def data_generator_sequences(image_dir, mask_dir, batch_size, sequence_length=15
             yield X_batch, y_batch
 
 def data_generator_for_training(image_dir, mask_dir, batch_size, sequence_length=15, 
-                              patch_size=256, img_channels=3, reverse_time=True,
-                              min_positive_frames=3):
+                              patch_size=256, img_channels=1, reverse_time=False,
+                              min_positive_frames=1):
     """
     Training generator - infinite loop with augmentation and shuffling
     """
@@ -254,7 +257,7 @@ def data_generator_for_training(image_dir, mask_dir, batch_size, sequence_length
     )
 
 def data_generator_for_validation(image_dir, mask_dir, batch_size, sequence_length=15,
-                                patch_size=256, img_channels=3, reverse_time=True,
+                                patch_size=256, img_channels=1, reverse_time=False,
                                 min_positive_frames=1):
     """
     Validation generator - no augmentation, may use lower min_positive_frames
@@ -266,7 +269,7 @@ def data_generator_for_validation(image_dir, mask_dir, batch_size, sequence_leng
     )
 
 def create_generators(train_image_dir, train_mask_dir, val_image_dir, val_mask_dir, 
-                     batch_size, sequence_length=15, reverse_time=True,
+                     batch_size, sequence_length=15, reverse_time=False,
                      train_min_positive_frames=1, val_min_positive_frames=1):
     """
     Create properly configured training and validation generators for sequences
@@ -284,18 +287,22 @@ def create_generators(train_image_dir, train_mask_dir, val_image_dir, val_mask_d
     )
     
     print(f"\nGenerator Configuration:")
-    print(f"Reverse time: {reverse_time}")
     print(f"Min positive frames (train/val): {train_min_positive_frames}/{val_min_positive_frames}")
     
     return train_gen, val_gen
 
 # Simple wrapper for backward compatibility
 def data_generator(image_dir, mask_dir, batch_size=16, sequence_length=15,
-                  reverse_time=True, min_positive_frames=1):
+                  reverse_time=False, min_positive_frames=1, train=True):
     """
     Simple data generator for single dataset (e.g., just training or just validation)
     """
-    return data_generator_for_training(
-        image_dir, mask_dir, batch_size, sequence_length,
-        reverse_time=reverse_time, min_positive_frames=min_positive_frames
-    )
+    if train:
+        return data_generator_for_training(
+            image_dir, mask_dir, batch_size, sequence_length,
+            reverse_time=reverse_time, min_positive_frames=min_positive_frames)
+    else:
+        return data_generator_for_validation(
+            image_dir, mask_dir, batch_size, sequence_length,
+            reverse_time=reverse_time, min_positive_frames=min_positive_frames)
+        

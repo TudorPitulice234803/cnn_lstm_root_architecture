@@ -4,9 +4,9 @@ from tensorflow.keras.preprocessing.image import load_img, img_to_array
 import albumentations as A
 
 augment = A.Compose([
-    A.HorizontalFlip(p=0.7),
-    A.VerticalFlip(p=0.7),
-    A.Rotate(limit=45, p=0.7),
+    A.HorizontalFlip(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.Rotate(limit=15, p=0.5),
 ], additional_targets={'mask': 'mask'})
 
 def build_patch_index(image_dir):
@@ -83,7 +83,7 @@ def data_generator_for_new_vit(image_dir, mask_dir, batch_size, patch_size=256, 
             yield np.array(X_batch), np.array(y_batch)
 
 # Alternative: If you want to keep your original grouped approach
-def data_generator(image_dir, mask_dir, batch_size, patch_size=256, img_channels=3):
+def data_generator(image_dir, mask_dir, batch_size, patch_size=256, img_channels=1):
     """
     Alternative generator that processes all patches from the same plant/day together
     But still outputs individual patches for the model
@@ -103,7 +103,10 @@ def data_generator(image_dir, mask_dir, batch_size, patch_size=256, img_channels
             
             for pf in patch_files:
                 # Load image and mask as 2D
-                img_patch = img_to_array(load_img(os.path.join(image_dir, pf)))
+                img_patch = img_to_array(load_img(
+                    os.path.join(image_dir, pf),
+                    color_mode='grayscale'
+                ))
                 mask_patch = img_to_array(load_img(
                     os.path.join(mask_dir, pf.replace('.png', '.tif')),
                     color_mode='grayscale'

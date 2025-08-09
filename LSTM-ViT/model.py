@@ -4,18 +4,17 @@ from tensorflow.keras.layers import *
 
 def lstm_vit():
     """
-    LSTM-ViT with backbone matched to simple ViT for fair comparison
+    LSTM-ViT with ConvLSTM2D for spatial-temporal modeling
     """
     ### HYPER PARAMS ###
     seq_len = 15
     img_height = 256
     img_width = 256
-    img_channels = 3
-    embedding_dim = 256       # Same as simple ViT
+    img_channels = 1
+    embedding_dim = 128       # Same as simple ViT
     num_heads = 4             # Same as simple ViT
-    ff_dim = 512              # Same as simple ViT
     num_transformer_blocks = 4 # Same as simple ViT
-    lstm_units = 64           # LSTM specific
+    convlstm_filters = 128     # ConvLSTM specific
     
     inputs = Input(shape=(seq_len, img_height, img_width, img_channels))
     
@@ -42,7 +41,7 @@ def lstm_vit():
         )(positions)
         x += position_embeddings
         
-        # Transformer blocks - EXACT same as simple ViT
+        # Transformer blocks - MLP removed for faster training
         for _ in range(num_transformer_blocks):
             # Multi head Self Attention
             x1 = LayerNormalization(epsilon=1e-6)(x)
@@ -51,14 +50,7 @@ def lstm_vit():
                 key_dim=embedding_dim // num_heads,
                 dropout=0.1
             )(x1, x1)
-            x2 = Add()([x, attention_output])
-            
-            # Feed forward Network
-            x3 = LayerNormalization(epsilon=1e-6)(x2)
-            ff_output = Dense(ff_dim, activation='gelu')(x3)
-            ff_output = Dense(embedding_dim)(ff_output)
-            ff_output = Dropout(0.1)(ff_output)
-            x = Add()([x2, ff_output])
+            x = Add()([x, attention_output])
         
         # Final Normalization
         x = LayerNormalization(epsilon=1e-6)(x)
@@ -75,27 +67,23 @@ def lstm_vit():
     encoded_seq = TimeDistributed(vit_encoder, name='temporal_encoding')(inputs)
     # Shape: (batch_size, seq_len, 32, 32, embedding_dim)
     
-    # Flatten spatial dimensions for LSTM processing
-    B = tf.shape(encoded_seq)[0]
-    T = seq_len
-    H, W, C = 32, 32, embedding_dim
-    x = Reshape((T, H * W * C))(encoded_seq)  # (batch_size, seq_len, 32*32*256)
-    
-    # Temporal modeling with Bidirectional LSTM
     x = Bidirectional(
-        LSTM(lstm_units, return_sequences=True, dropout=0.2),
-        name='temporal_lstm'
-    )(x)
-    # Shape: (batch_size, seq_len, 2*lstm_units)
+        ConvLSTM2D(
+            filters=convlstm_filters//2,  # Note: divide by 2 since Bidirectional concatenates
+            kernel_size=3,
+            padding='same',
+            return_sequences=True,
+            dropout=0.2,
+            recurrent_dropout=0.2
+        ),
+        merge_mode='concat'
+    )(encoded_seq)
     
-    # Project LSTM output back to spatial feature size
+    # Project back to original embedding dimension if needed
     x = TimeDistributed(
-        Dense(H * W * C, activation='relu'),
-        name='spatial_projection'
+        Conv2D(embedding_dim, 1, activation='relu'),
+        name='feature_projection'
     )(x)
-    
-    # Reshape back to spatial dimensions
-    x = Reshape((T, H, W, C))(x)
     # Shape: (batch_size, seq_len, 32, 32, embedding_dim)
     
     # Decoder - EXACT same as simple ViT
@@ -106,4 +94,4 @@ def lstm_vit():
     # Final segmentation layer - same as simple ViT
     outputs = TimeDistributed(Conv2D(1, 1, activation='sigmoid'))(x)
     
-    return Model(inputs=inputs, outputs=outputs, name='LSTM_ViT')
+    return Model(inputs=inputs, outputs=outputs, name='LSTM_ViT_ConvLSTM')

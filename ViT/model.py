@@ -3,12 +3,12 @@ from tensorflow import keras
 from tensorflow.keras.layers import Input, Conv2D, Reshape, Embedding, LayerNormalization, MultiHeadAttention, Add, Dense, Dropout, Conv2DTranspose
 
 def vit():
-    embedding_dim = 256       # Embedding dimension for each patch
+    embedding_dim = 128       # Embedding dimension for each patch
     num_heads = 4             # Number of attention heads
-    ff_dim = 512              # Feedforward network dimension
+    ff_dim = 256              # Feedforward network dimension
     num_transformer_blocks = 4
 
-    inputs = Input(shape=(256, 256, 3))
+    inputs = Input(shape=(256, 256, 1))
 
     # Use CNN layers to create feature representations
     # This preserves spatial information while creating embeddings
