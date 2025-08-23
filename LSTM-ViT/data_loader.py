@@ -166,7 +166,6 @@ def data_generator_sequences(image_dir, mask_dir, batch_size, sequence_length=15
     
     print(f"Total valid sequences: {len(all_sequences)}")
     print(f"Skipped empty sequences: {skipped_empty}")
-    print(f"Reverse time order: {reverse_time}")
     
     if len(all_sequences) == 0:
         raise ValueError("No valid sequences found! Check your data paths and min_positive_frames setting.")
