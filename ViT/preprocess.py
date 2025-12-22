@@ -38,8 +38,8 @@ def padder(image, patch_size):
     """
     h = image.shape[0]
     w = image.shape[1]
-    height_padding = ((h // patch_size) + 1) * patch_size - h
-    width_padding = ((w // patch_size) + 1) * patch_size - w
+    height_padding = (patch_size - (h % patch_size)) % patch_size
+    width_padding = (patch_size - (w % patch_size)) % patch_size
 
     top_padding = int(height_padding/2)
     bottom_padding = height_padding - top_padding
