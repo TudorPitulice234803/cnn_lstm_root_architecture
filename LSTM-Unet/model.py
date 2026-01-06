@@ -41,16 +41,13 @@ def lstm_unet(input_shape=(15, 256, 256, 3)):
     c4 = TimeDistributed(ReLU())(c4)
     p4 = TimeDistributed(MaxPooling2D((2, 2)))(c4)
     
-    # Bottleneck - ConvLSTM2D like your working ResNet
-    c5 = ConvLSTM2D(128, (3, 3), padding='same', 
+    # Bottleneck - ConvLSTM2D
+    c5 = ConvLSTM2D(256, (3, 3), padding='same', 
                     return_sequences=True, activation='tanh')(p4)
-    c5 = BatchNormalization()(c5)
-    c5 = ConvLSTM2D(128, (3, 3), padding='same', 
-                    return_sequences=True, activation='tanh')(c5)
     c5 = BatchNormalization()(c5)
     c5 = Dropout(0.3)(c5)
     
-    # Decoder (Expansive Path) - Add BatchNorm like ResNet
+    # Decoder (Expansive Path) - Add BatchNorm
     u6 = TimeDistributed(Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same'))(c5)
     u6 = TimeDistributed(BatchNormalization())(u6)
     u6 = TimeDistributed(ReLU())(u6)
@@ -99,7 +96,7 @@ def lstm_unet(input_shape=(15, 256, 256, 3)):
     c9 = TimeDistributed(BatchNormalization())(c9)
     c9 = TimeDistributed(ReLU())(c9)
     
-    # Final prediction per frame (like ResNet)
+    # Final prediction per frame
     outputs = TimeDistributed(Conv2D(1, (1, 1), activation='sigmoid'))(c9)
     
     return Model(inputs, outputs)
