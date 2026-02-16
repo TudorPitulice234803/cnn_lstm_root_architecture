@@ -49,7 +49,7 @@ def lstm_resnet(img_height, img_width, img_channels, time_steps):
     # Temporal processing at bottleneck (replaces residual convolutions)
     x = ConvLSTM2D(filters=256, kernel_size=(3, 3), padding='same',
                    return_sequences=True, activation='tanh')(x)
-    x = BatchNormalization()(x)
+    x = TimeDistributed(BatchNormalization())(x)
 
     # TimeDistributed Decoder
     x = TimeDistributed(Conv2DTranspose(128, (3, 3), strides=2, padding='same'))(x)
