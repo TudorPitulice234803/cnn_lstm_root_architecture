@@ -44,7 +44,7 @@ def lstm_unet(input_shape=(15, 256, 256, 3)):
     # Bottleneck - ConvLSTM2D
     c5 = ConvLSTM2D(256, (3, 3), padding='same', 
                     return_sequences=True, activation='tanh')(p4)
-    c5 = BatchNormalization()(c5)
+    c5 = TimeDistributed(BatchNormalization())(c5)
     c5 = Dropout(0.3)(c5)
     
     # Decoder (Expansive Path) - Add BatchNorm
